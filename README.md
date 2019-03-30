@@ -42,3 +42,123 @@ Finally we observe the differences between the mean presentation of each digit w
 posterior prediction.
 
 ![Reconstructions](reconstructions.png) 
+
+
+## GAN (Generative Adversarial Network)
+
+A GAN is a neural network that is composed by a generator and a discriminator networks. The principal
+application of the GANs is to generate realistic images that can in turn be used in other supervised tasks.
+ 
+The discriminator takes an image and its job is to decide whether it is real or fake. The generator produces
+fake images and tries to fool the discriminator by creating realistic images.
+
+We can construct the discriminator as usual using convolutional, dropout and dense layers.
+
+            conv1 = conv2d(X_in, filters = conv1_params[0], kernel_size = conv1_params[1], strides = conv1_params[2])
+            conv1 = tf.layers.dropout(conv1, rate = dropout_rate)
+
+            conv2 = conv2d(conv1, filters = conv2_params[0], kernel_size = conv2_params[1], strides = conv2_params[2])
+            conv2 = tf.layers.dropout(conv2, rate = dropout_rate)
+
+            conv3 = tf.layers.conv2d(conv2, filters = conv3_params[0], kernel_size = conv3_params[1], strides = conv3_params[2])
+            conv3 = tf.layers.dropout(conv3, rate = dropout_rate)
+
+            flatten = tf.layers.flatten(conv3);
+
+            dense1 = dense(flatten, dense1_params[0])
+
+            output = dense(dense1, dense2_params[0], activation = None)
+
+
+For the generator we need to construct a special layer that behaves as the opposite of the convolutional layer. Generally,
+the output of the covolutional layer is a smaller image. Then the oppositive operation
+should output a larger image than the input.
+
+We can't contruct a deconvolutional layer as actually the convolutional operational is destructive. However it suffices
+to look for an operation that spatially behaves the same: the output should be larger than the input.
+This layer in tensorflow is conv2d_transpose.
+
+The remaining elements that are needed for the generator are dense and dropout layers.
+
+            dense1 = dense(z, pp1[0]*pp1[0]*pp1[1])        
+            #dense1 = tf.layers.dropout(dense1, rate = dropout_rate);
+            dense1 = tf.contrib.layers.batch_norm(dense1, is_training=is_training, decay=momentum) 
+
+            projection = tf.reshape(dense1, (-1, pp1[0], pp1[0], pp1[1])) 
+            projection = tf.image.resize_images(projection, [pp2[0], pp2[1]])
+
+            deconv1 = deconv2d(projection, filters = dp1[0], kernel_size = dp1[1], strides = dp1[2])
+            #deconv1 = tf.layers.dropout(deconv1, rate = dropout_rate);
+            deconv1 = tf.contrib.layers.batch_norm(deconv1, is_training=is_training, decay=momentum) 
+
+            deconv2 = deconv2d(deconv1, filters = dp2[0], kernel_size = dp2[1], strides = dp2[2])
+            #deconv2 = tf.layers.dropout(deconv2, rate = dropout_rate);
+            deconv2 = tf.contrib.layers.batch_norm(deconv2, is_training=is_training, decay=momentum) 
+
+            deconv3 = deconv2d(deconv2, filters = dp3[0], kernel_size = dp3[1], strides = dp3[2])
+            #deconv3 = tf.layers.dropout(deconv3, rate = dropout_rate);
+            deconv3 = tf.contrib.layers.batch_norm(deconv3, is_training=is_training, decay=momentum) 
+
+            deconv4 = deconv2d(deconv3, filters = dp4[0], kernel_size = dp4[1], strides = dp4[2], activation = tf.nn.sigmoid);
+
+Finally the architecture of a GAN is as follows:
+
+
+a) A discriminator.
+
+c) Real images that will become the input of the discriminator.
+
+b) A generator that will produce fake images. The output of the generator will become the input of the 
+   discriminator as well.
+
+That is, the discriminator will be feed with both real images and fake images and the loss function will be
+a combination of both. The objective of the discriminator is to minimize this loss.
+
+On the other hand the objective of the generator is to maximize the same loss by producing
+real looking images, without touching the weights of the discriminator.
+
+Generally the GANs are hard to train. It is really sensitive to the hyperparameters. Addionally they
+suffer from vanishing gradients and mode collapse problems.
+
+To tackle the first problem it is sufficient to introduce a batch norm layer after each conv2d layer in the
+discriminator and after the conv2d_transpose layers in the generator. 
+
+            deconv1 = tf.contrib.layers.batch_norm(deconv1, is_training=is_training, decay=momentum) 
+
+To alleviate the second problem one tecnique is to not allow that the discriminator is trained too fast and 
+the generator falls behind. Conversely, we should not allow that the generator learns too fast and the
+discriminator too slow. To control this situation during training we can set some restrictions.
+For example, if the discriminator loss is two times less than the generator loss, then the discriminator
+is being trained too fast and we should stop training it until the generator catches. 
+
+
+            train_generator = True;
+            if(g_loss_*2.0 < d_loss_):
+                train_generator = False;
+
+            train_discriminator = True;
+            if(d_loss_*2.0 < g_loss_):
+                train_discriminator = False;
+
+            if(train_discriminator):    
+                self.sess.run([self.d_opt_step], feed_dict = {self.images:X_batch, self.z: noise, self.g_is_training: False})
+
+            if(train_generator):
+                self.sess.run([self.g_opt_step], feed_dict = {self.z: noise, self.g_is_training: True})
+
+For this study case I used the MNIST dataset and the faces dataset "http://vis-www.cs.umass.edu/lfw/lfw.tgz".
+
+The GANs for both the MNIST and the faces datasets start outputing recognizable images after 10000 training steps.
+
+![Mnist 0](mnist 0.png)
+
+![Mnist 5000](mnist 5000.png) 
+
+![Mnist 10000](mnist 10000_.png)  
+
+
+![Faces 0](Faces 0.png)
+
+![Faces 5000](Faces 5000.png) 
+
+![Faces 10000](Faces 10000.png)  
